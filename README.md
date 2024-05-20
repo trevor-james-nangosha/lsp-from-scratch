@@ -1,4 +1,4 @@
-# Minimum Viable VS Code Language Server Extension
+# LSP from scratch
 
 NOTE: This is heavily based on [lsp-sample from vscode-extension-samples][sample] with the goal of removing example-specific code to ease starting a new Language Server.
 

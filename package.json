@@ -1,10 +1,10 @@
 {
-  "name": "REPLACE_ME",
-  "description": "REPLACE_ME",
-  "author": "REPLACE_ME",
+  "name": "lsp-nangosha",
+  "description": "A simple language server protocol implementation from scratch",
+  "author": "tjnangosha",
   "license": "MIT",
   "version": "1.0.0",
-  "publisher": "REPLACE_ME",
+  "publisher": "tjnangosha",
   "categories": [],
   "engines": {
     "vscode": "^1.75.0"

@@ -1,18 +1,15 @@
 {
-  "name": "REPLACE_ME",
-  "description": "REPLACE_ME",
+  "name": "lsp-nangosha-server",
+  "description": "Server for the LSP implementation",
   "version": "1.0.0",
-  "author": "REPLACE_ME",
+  "author": "tjnangosha",
   "license": "MIT",
   "engines": {
     "node": "*"
   },
   "repository": {
     "type": "git",
-    "url": "REPLACE_ME"
+    "url": ""
   },
-  "dependencies": {
-    "vscode-languageserver": "^8.1.0",
-    "vscode-languageserver-textdocument": "^1.0.8"
-  }
+  "dependencies": {}
 }

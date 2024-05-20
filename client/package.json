@@ -1,10 +1,10 @@
 {
-  "name": "REPLACE_ME",
-  "description": "REPLACE_ME",
-  "author": "REPLACE_ME",
+  "name": "lsp-nangosha-client",
+  "description": "Client for the LSP implementation",
+  "author": "tjangosha",
   "license": "MIT",
   "version": "0.0.1",
-  "publisher": "REPLACE_ME",
+  "publisher": "",
   "repository": {
     "type": "git",
     "url": "REPLACE_ME"

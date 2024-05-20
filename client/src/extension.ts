@@ -19,10 +19,10 @@ export function activate(context: ExtensionContext) {
   // If the extension is launched in debug mode then the debug server options are used
   // Otherwise the run options are used
   const serverOptions: ServerOptions = {
-    run: { module: serverModule, transport: TransportKind.ipc },
+    run: { module: serverModule, transport: TransportKind.stdio },
     debug: {
       module: serverModule,
-      transport: TransportKind.ipc,
+      transport: TransportKind.stdio,
     },
   };
 
@@ -38,8 +38,8 @@ export function activate(context: ExtensionContext) {
 
   // Create the language client and start the client.
   client = new LanguageClient(
-    "REPLACE_ME language-server-id",
-    "REPLACE_ME language server name",
+    "nangosha-lsp-server-id",
+    "nangosha-lsp-server-name",
     serverOptions,
     clientOptions
   );
