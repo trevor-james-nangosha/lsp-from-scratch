@@ -1,87 +1,39 @@
 import log from "./log";
 import * as fs from "fs";
+import {
+  CodeAction,
+  CodeActionParams,
+  CompletionList,
+  CompletionParams,
+  Diagnostic,
+  DiagnosticSeverity,
+  DidChangeTextDocumentParams,
+  DocumentBody,
+  DocumentDiagnosticParams,
+  DocumentUri,
+  FullDocumentDiagnosticReport,
+  InitializeResult,
+  NotificationMessage,
+  NotificationMethod,
+  RequestMessage,
+  RequestMethod,
+} from "./types";
 
-type ServerCapabilities = Record<string, unknown>;
-type RequestMethod = (
-  message: RequestMessage
-) => ReturnType<typeof initialize> | ReturnType<typeof completion>;
-type DocumentUri = string;
-type DocumentBody = string;
-type NotificationMethod = (message: NotificationMessage) => void;
-
+const MAX_LENGTH = 1000;
 const documents = new Map<DocumentUri, DocumentBody>();
-const words = fs.readFileSync("D:/words.txt", "utf-8").toString().split("\n");
+const words = fs.readFileSync("D:/words.txt", "utf-8").toString().split("\r\n");
 
-interface Message {
-  jsonrpc: string;
-}
-
-interface NotificationMessage extends Message {
-  method: string;
-  params: unknown[] | object;
-}
-
-interface RequestMessage extends NotificationMessage {
-  id: number | string;
-}
-
-interface ResponseMessage extends Message {
-  id: number | string | null;
-  result?: string | number | boolean | unknown[] | object | null;
-  // error?: ResponseError;
-}
-
-interface InitializeResult {
-  capabilities: ServerCapabilities;
-  serverInfo?: {
-    name: string;
-    version?: string;
-  };
-}
-
-interface CompletionItem {
-  label: string;
-}
-
-interface CompletionList {
-  isIncomplete: boolean;
-  items: CompletionItem[];
-}
-
-interface TextDocumentIdentifier {
-  uri: DocumentUri;
-}
-
-interface VersionedTextDocumentIdentifier extends TextDocumentIdentifier {
-  version: number;
-}
-
-interface TextDocumentContentChangeEvent {
-  text: string;
-}
-
-interface DidChangeTextDocumentParams {
-  textDocument: VersionedTextDocumentIdentifier;
-  contentChanges: TextDocumentContentChangeEvent[];
-}
-
-interface Position {
-  line: number;
-  character: number;
-}
-
-interface TextDocumentPositionParams {
-  textDocument: TextDocumentIdentifier;
-  position: Position;
-}
-
-interface CompletionParams extends TextDocumentPositionParams {}
-
-const initialize = (message: RequestMessage): InitializeResult => {
+export const initialize = (message: RequestMessage): InitializeResult => {
   return {
     capabilities: {
       completionProvider: {},
+      codeActionProvider: true,
       textDocumentSync: 1,
+      diagnosticProvider: {
+        identifier: "nangoshaDiagnosticProviderIdentifer",
+        interfaceFileDependencies: false,
+        workspaceDiagnostics: false,
+      },
     },
     serverInfo: {
       name: "lsp-nangosha",
@@ -90,7 +42,7 @@ const initialize = (message: RequestMessage): InitializeResult => {
   };
 };
 
-const completion = (message: RequestMessage): CompletionList | null => {
+export const completion = (message: RequestMessage): CompletionList | null => {
   const params = message.params as CompletionParams;
   const content = documents.get(params.textDocument.uri);
 
@@ -106,31 +58,87 @@ const completion = (message: RequestMessage): CompletionList | null => {
     .filter((word) => {
       return word.startsWith(currentPrefix);
     })
-    .slice(0, 1000)
+    .slice(0, MAX_LENGTH)
     .map((word) => {
       return { label: word };
     });
 
   return {
-    isIncomplete: true,
+    isIncomplete: items.length === MAX_LENGTH,
     items,
   };
 };
 
-const didChange = (message: NotificationMessage) => {
-  log.write({ message })
-
+export const didChange = (message: NotificationMessage) => {
   const params = message.params as DidChangeTextDocumentParams;
-  log.write({ params })
   documents.set(params.textDocument.uri, params.contentChanges[0].text);
 };
 
-// the way that the LSP works is with methods, so
-// define methods for the different server/client capabilities
-const methodLookup: Record<string, RequestMethod | NotificationMethod> = {
+export const codeAction = (params: CodeActionParams): CodeAction[] => {
+  return [
+    {
+      title: "Spelling error!",
+    },
+  ];
+};
+
+export const diagnostic = (
+  params: DocumentDiagnosticParams
+): FullDocumentDiagnosticReport | null => {
+  // the funny thing is that everytime i give the parameters a type of
+  // DocumentDiagnosticParams, i just get errors. I don't know why
+  // In the meantime, I will use the cast the any type and work with them as is
+  const inner_params = params as any
+  const fileChanges = documents.get(inner_params.params.textDocument.uri);
+
+  log.write({fileChanges})
+  
+  if (!fileChanges) {
+    return null;
+  }
+
+  const fileChangesArr = fileChanges.split("\n")
+  const wordsInDocument = fileChanges.split(/\W/);
+  const invalidWords = wordsInDocument.filter(
+    (word) => !words.includes(word)
+  );
+
+  const items: Diagnostic[] = [];
+  invalidWords.forEach((invalidWord) => {
+    const invalidWordRegex = new RegExp(`\\b${invalidWord}\\b`, "g");
+
+    fileChangesArr.forEach((value, index) => {
+      let match
+
+      while ((match = invalidWordRegex.exec(value)) !== null) {
+        items.push({
+          source: "ns-lint",
+          severity: DiagnosticSeverity.Error,
+          range: {
+            start: { line: index, character: match.index },
+            end: { line: index, character: match.index + invalidWord.length},
+          },
+          message: `${invalidWord} is not a real word`
+        });
+      }
+    })    
+  });
+
+  return {
+    kind: "full",
+    items,
+  };
+};
+
+const methodLookup: Record<
+  string,
+  RequestMethod | NotificationMethod | typeof diagnostic | typeof codeAction
+> = {
   initialize,
   "textDocument/didChange": didChange,
   "textDocument/completion": completion,
+  "textDocument/codeAction": codeAction,
+  "textDocument/diagnostic": diagnostic
 };
 
 const respond = (id: RequestMessage["id"], result: object | null) => {
@@ -160,10 +168,10 @@ process.stdin.on("data", (data) => {
     const rawMessage = buffer.slice(messageStart, messageStart + contentLength);
     const message = JSON.parse(rawMessage);
 
-    // log.write({
-    //   id: message.id,
-    //   method: message.method,
-    // });
+    log.write({
+      id: message.id,
+      method: message.method,
+    });
 
     // call method and respond
     const method = methodLookup[message.method];
