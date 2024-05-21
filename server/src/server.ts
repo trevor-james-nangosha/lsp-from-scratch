@@ -1,7 +1,9 @@
 import log from "./log";
 import * as fs from "fs";
+import { spawnSync } from "child_process";
 import {
   CodeAction,
+  CodeActionKind,
   CodeActionParams,
   CompletionList,
   CompletionParams,
@@ -21,7 +23,10 @@ import {
 
 const MAX_LENGTH = 1000;
 const documents = new Map<DocumentUri, DocumentBody>();
-const words = fs.readFileSync("D:/words.txt", "utf-8").toString().split("\r\n");
+const words = fs
+  .readFileSync("/home/nangoshamsg6/words.txt", "utf-8")
+  .toString()
+  .split("\r\n");
 
 export const initialize = (message: RequestMessage): InitializeResult => {
   return {
@@ -69,17 +74,66 @@ export const completion = (message: RequestMessage): CompletionList | null => {
   };
 };
 
+const spellingSuggestions = (content: string): Record<string, string[]> => {
+  const invalidWordsAndSuggestions: Record<string, string[]> = {};
+  const allOutput = spawnSync("aspell", ["pipe"], {
+    input: content,
+    encoding: "utf-8",
+  })
+    .stdout.trim()
+    .split("\n");
+
+  allOutput.forEach((line) => {
+    const prefix = line.slice(0, 1);
+    switch (prefix) {
+      case "&":
+        const match = line.match(/^& (.*?) \d.*: (.*)$/);
+
+        if (!match) return;
+
+        invalidWordsAndSuggestions[match[1]] = match[2].split(", ");
+        break;
+      case "#":
+        const noSuggestionMatch = line.match(/^# (.*?) \d/);
+
+        if (!noSuggestionMatch) return;
+
+        invalidWordsAndSuggestions[noSuggestionMatch[1]] = [];
+        break;
+    }
+  });
+
+  return invalidWordsAndSuggestions;
+};
+
 export const didChange = (message: NotificationMessage) => {
   const params = message.params as DidChangeTextDocumentParams;
   documents.set(params.textDocument.uri, params.contentChanges[0].text);
 };
 
 export const codeAction = (params: CodeActionParams): CodeAction[] => {
-  return [
-    {
-      title: "Spelling error!",
-    },
-  ];
+  const inner_params = params as any;
+  const diagnostics = inner_params.params.context.diagnostics;
+
+  return diagnostics.flatMap((diagnostic: any): CodeAction[] => {
+    return diagnostic.data.wordSuggestions.map((wordSuggestion: any): CodeAction => {
+      return {
+        title: `Replace with "${wordSuggestion}"`,
+        kind: CodeActionKind.QuickFix,
+        edit: {
+          changes: {
+            [inner_params.params.textDocument.uri]: [
+              {
+                range: diagnostic.range,
+                newText: wordSuggestion,
+              },
+            ],
+          },
+        },
+      };
+    });
+
+  });
 };
 
 export const diagnostic = (
@@ -88,27 +142,32 @@ export const diagnostic = (
   // the funny thing is that everytime i give the parameters a type of
   // DocumentDiagnosticParams, i just get errors. I don't know why
   // In the meantime, I will use the cast the any type and work with them as is
-  const inner_params = params as any
+  const inner_params = params as any;
   const fileChanges = documents.get(inner_params.params.textDocument.uri);
 
-  log.write({fileChanges})
-  
+  log.write({ fileChanges });
+
   if (!fileChanges) {
     return null;
   }
 
-  const fileChangesArr = fileChanges.split("\n")
+  const fileChangesArr = fileChanges.split("\n");
   const wordsInDocument = fileChanges.split(/\W/);
-  const invalidWords = wordsInDocument.filter(
-    (word) => !words.includes(word)
-  );
+  const invalidWords = wordsInDocument.filter((word) => !words.includes(word));
+
+  const invalidWordsAndSuggestions: Record<string, string[]> =
+    spellingSuggestions(fileChanges);
+  log.write({ invalidWordsAndSuggestions });
 
   const items: Diagnostic[] = [];
-  invalidWords.forEach((invalidWord) => {
+  Object.keys(invalidWordsAndSuggestions).forEach(invalidWord => {
     const invalidWordRegex = new RegExp(`\\b${invalidWord}\\b`, "g");
+    const wordSuggestions = invalidWordsAndSuggestions[invalidWord]
+
+    let message = wordSuggestions.length ? `${invalidWord} not in our dictionary. Did you mean: ${wordSuggestions.join(", ")}` : `${invalidWord} is not our dictionary`
 
     fileChangesArr.forEach((value, index) => {
-      let match
+      let match;
 
       while ((match = invalidWordRegex.exec(value)) !== null) {
         items.push({
@@ -116,12 +175,17 @@ export const diagnostic = (
           severity: DiagnosticSeverity.Error,
           range: {
             start: { line: index, character: match.index },
-            end: { line: index, character: match.index + invalidWord.length},
+            end: { line: index, character: match.index + invalidWord.length },
           },
-          message: `${invalidWord} is not a real word`
+          message,
+          data: {
+            wordSuggestions,
+            invalidWord,
+            type: "spelling-suggestion",
+          },
         });
       }
-    })    
+    });
   });
 
   return {
@@ -138,7 +202,7 @@ const methodLookup: Record<
   "textDocument/didChange": didChange,
   "textDocument/completion": completion,
   "textDocument/codeAction": codeAction,
-  "textDocument/diagnostic": diagnostic
+  "textDocument/diagnostic": diagnostic,
 };
 
 const respond = (id: RequestMessage["id"], result: object | null) => {

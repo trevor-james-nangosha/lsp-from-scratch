@@ -82,11 +82,18 @@ export interface Range {
   end: Position;
 }
 
+interface SpellingSuggestionData{
+  wordSuggestions: string[];
+  invalidWord: string;
+  type: "spelling-suggestion";
+}
+
 export interface Diagnostic {
   range: Range;
   severity?: DiagnosticSeverity;
   message: string;
   source?: string;
+  data?: SpellingSuggestionData;
 }
 
 export namespace DiagnosticSeverity {
@@ -120,10 +127,21 @@ export namespace CodeActionKind {
   export const QuickFix: CodeActionKind = "quickfix";
 }
 
+interface TextEdit {
+	range: Range;
+	newText: string;
+}
+
+interface WorkspaceEdit{
+  changes?: { [uri: DocumentUri]: TextEdit[]; };
+}
+
 export interface CodeAction {
   title: string;
   kind?: CodeActionKind;
   diagnostics?: Diagnostic[];
+  edit?: WorkspaceEdit;
+  data?: unknown;
 }
 
 export interface WorkDoneProgressOptions {
